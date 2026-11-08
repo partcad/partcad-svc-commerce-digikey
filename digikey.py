@@ -45,6 +45,7 @@ import concurrent.futures
 import importlib.util
 import io
 import os
+import re
 import sys
 import threading
 import urllib.parse
@@ -70,8 +71,6 @@ def _beside(filename, name):
 
 
 d = _beside("distributor.py", "_partcad_digikey_distributor")
-# The SnapMagic plugin beside this one, for the one spelling of a SnapMagic part's name.
-snapmagic = _beside("snapmagic_repo.py", "_partcad_digikey_snapmagic")
 
 API = "https://api.digikey.com"
 SANDBOX = "https://sandbox-api.digikey.com"
@@ -116,9 +115,10 @@ SITES = {
 }
 LANGUAGES = ("en", "ja", "de", "fr", "ko", "zhs", "zht", "it", "es", "he", "nl", "sv", "pl", "fi", "da", "no")
 
-# Where a DigiKey part with no model of DigiKey's own is drawn from: the
-# SnapMagic package beside the catalogue, whose part a DigiKey media link names.
-SNAPMAGIC = "//pub/svc/commerce/digikey/snapmagic"
+# Where a DigiKey part with no model of DigiKey's own is drawn from: SnapMagic's
+# collection (github.com/partcad/partcad-repo-snapmagic), whose part a DigiKey
+# media link names.
+SNAPMAGIC = "//pub/collection/snapmagic/models"
 SNAPMAGIC_HOSTS = ("snapeda.com", "www.snapeda.com", "snapmagic.com", "www.snapmagic.com")
 
 # What a medium is called when it may be a model of the product ('3D Models',
@@ -138,6 +138,9 @@ class DigiKey(d.Distributor):
     )
     VERSION = CACHE_VERSION
     VENDOR = "digikey"
+    # A product is sold as several DigiKey numbers - cut tape, a full reel,
+    # Digi-Reel: one part per product, and an alias of it per number.
+    BASE_PARTS = True
     VENDOR_ALIASES = ("digi-key", "digikey electronics", "digi-key electronics")
     PACKAGE = "//pub/svc/commerce/digikey"
     STORE = "digikey"
@@ -297,11 +300,16 @@ class DigiKey(d.Distributor):
             if not sku:
                 continue
             pricing = variation.get("MyPricing") or variation.get("StandardPricing") or []
+            # A packaging sold only in whole standard packages - a full reel of
+            # 5000 - is one of those per SKU; cut tape and Digi-Reel are by the piece.
+            moq = d.whole(variation.get("MinimumOrderQuantity"), 1) or 1
+            standard = d.whole(variation.get("StandardPackage") or item.get("StandardPackage"), 1) or 1
             products.append(
                 d.Product(
                     sku,
                     packaging=((variation.get("PackageType") or {}).get("Name")),
-                    moq=variation.get("MinimumOrderQuantity"),
+                    moq=moq,
+                    pack=standard if standard > 1 and moq == standard else 1,
                     stock=d.whole(variation.get("QuantityAvailableforPackageType"), item.get("QuantityAvailable")),
                     breaks=[(p.get("BreakQuantity"), p.get("UnitPrice")) for p in pricing if isinstance(p, dict)],
                     orderable=orderable and variation.get("MarketPlace") is not True,
@@ -394,6 +402,12 @@ class DigiKey(d.Distributor):
         }
 
 
+def snapmagic_key(mpn, manufacturer):
+    """The name SnapMagic's plugin knows a part by, 'LM358DR~texas-instruments': its 'key_of', spelled here too."""
+    maker = re.sub(r"[^a-z0-9]+", "-", str(manufacturer).lower().replace("&", " and ")).strip("-")
+    return "%s~%s" % (urllib.parse.quote(str(mpn), safe="-._"), maker)
+
+
 def snapmagic_of(media):
     """The name of the SnapMagic part a product's media link to ('LM358DR~texas-instruments'), or None.
 
@@ -404,7 +418,7 @@ def snapmagic_of(media):
         url = urllib.parse.urlsplit(str((link or {}).get("Url") or ""))
         parts = url.path.strip("/").split("/")
         if url.netloc.lower() in SNAPMAGIC_HOSTS and len(parts) >= 3 and parts[0] == "parts":
-            return snapmagic.key_of(urllib.parse.unquote(parts[1]), urllib.parse.unquote(parts[2]))
+            return snapmagic_key(urllib.parse.unquote(parts[1]), urllib.parse.unquote(parts[2]))
     return None
 
 

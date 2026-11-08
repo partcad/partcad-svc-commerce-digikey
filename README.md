@@ -6,14 +6,23 @@ DigiKey, published with the other stores as `//pub/svc/commerce/digikey`, in two
   manufacturer's part DigiKey lists, by its manufacturer and part number - at DigiKey's prices
   for your country, in your currency, with DigiKey's stock;
 * **a catalogue**, `//pub/svc/commerce/digikey/products`, whose child packages are DigiKey's
-  own categories, each searched with DigiKey's own search. A product is a part named by its
-  DigiKey part number, says `vendor: digikey` and its `sku`, and is bought from the store
-  above. Its geometry is the 3D model DigiKey hands out for it - or, where DigiKey has no model
-  file but links its SnapMagic page, SnapMagic's model of it (below);
-* **SnapMagic's 3D models**, `//pub/svc/commerce/digikey/snapmagic`: a manufacturer's part by
-  its part number and manufacturer (`LM358DR~texas-instruments`), with SnapMagic Search's
-  (formerly SnapEDA's) STEP model of it, and its manufacturer and part number as its `vendor`
-  and `sku`, so that DigiKey's store quotes it too.
+  own categories, each searched with DigiKey's own search, and walked down with
+  `pc list packages`. A product is two kinds of part:
+  * **the manufacturer's part**, named `<MPN>~<manufacturer>` (`ATMEGA328P-PU~microchip-technology`),
+    with the product's 3D model as its geometry, and its manufacturer and part number as its
+    `vendor` and `sku` - so that any store quoting by manufacturer's part number prices it,
+    DigiKey's among them;
+  * **an alias of it per DigiKey number** it is sold as (`ATMEGA328P-PU-ND`; a resistor's cut
+    tape, tape and reel, and Digi-Reel are three), saying `vendor: digikey`, its `sku`, and the
+    pack size as `count_per_sku` (a reel of 5000 is `5000`).
+
+  An assembly links the manufacturer's part. PartCAD counts it as bought because an alias of
+  it names a vendor and an SKU, and orders it by whichever alias suits the quantity: ten come
+  off cut tape, five thousand as the reel.
+
+The geometry is the 3D model DigiKey hands out for the product - or, where DigiKey has no model
+file but links its SnapMagic page, SnapMagic's model of it, from
+[SnapMagic for PartCAD](https://github.com/partcad/partcad-repo-snapmagic) (below).
 
 Both are one script, `digikey.py`, asking DigiKey's **Product Information API v4**
 (<https://developer.digikey.com>), which is DigiKey's own, versioned and documented.
@@ -41,9 +50,12 @@ are asked for with your DigiKey account number, the `account` parameter.
 pc list packages //pub/svc/commerce/digikey/products...
 pc search parts -P //pub/svc/commerce/digikey/products -k ATmega328P
 pc search parts -P //pub/svc/commerce/digikey/products/integrated-circuits-ics/embedded-microcontrollers -k "avr dip"
-pc info //pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND
-pc supply quote //pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND#10
+pc info "//pub/svc/commerce/digikey/products:ATMEGA328P-PU~microchip-technology"
+pc supply quote "//pub/svc/commerce/digikey/products:ATMEGA328P-PU~microchip-technology#10"
+pc supply quote "//pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND#10"
 ```
+
+A search finds both kinds: the manufacturer's part first, then an alias per DigiKey number.
 
 A part of your own package is quoted by DigiKey if it says either DigiKey's number or its
 manufacturer's:
@@ -74,42 +86,40 @@ Every request carries the token (OAuth 2.0 client credentials, kept for its ten 
 your locale - `X-DIGIKEY-Locale-Site`, `-Language`, `-Currency` from PartCAD's `country`,
 `language` and `currency`, falling back to what DigiKey has. A product sold in several
 packagings (cut tape, tape and reel, a tube) is a part per DigiKey number; a manufacturer's
-part is quoted in the packaging that makes the quantity cheapest, raised to its minimum.
+part is quoted in the packaging that makes the quantity cheapest, raised to its minimum. A
+DigiKey number sold only in multiples of a standard package (a reel, whose minimum is the reel)
+is a pack of that many, and is quoted per reel.
 
 ## SnapMagic's models
 
 DigiKey's API gives CAD as links among a product's media, and most of them are a CAD
 partner's page, not a file: mostly SnapMagic's (`snapeda.com/parts/<MPN>/<manufacturer>/...`).
-So a DigiKey part with no model file of DigiKey's own, whose media link a SnapMagic page, is an
-`alias` of SnapMagic's part - still bought from DigiKey, by its DigiKey number:
+So the manufacturer's part of a product with no model file of DigiKey's own, whose media link
+a SnapMagic page, is an `alias` of SnapMagic's part, and its DigiKey numbers are aliases of it
+as always:
 
 ```yaml
-# what //pub/svc/commerce/digikey/products:296-1395-1-ND answers
+# what //pub/svc/commerce/digikey/products:LM358DR~texas-instruments answers
 type: alias
-source: //pub/svc/commerce/digikey/snapmagic:LM358DR~texas-instruments
-vendor: digikey
-sku: 296-1395-1-ND
+source: //pub/collection/snapmagic/models:LM358DR~texas-instruments
+vendor: Texas Instruments
+sku: LM358DR
 ```
 
-SnapMagic's part is served by `snapmagic_repo.py`, which asks what SnapMagic's own CAD plugins
-for KiCad and Fusion ask, with your SnapMagic account:
+SnapMagic's part is served by its own package,
+[`//pub/collection/snapmagic`](https://github.com/partcad/partcad-repo-snapmagic), which needs
+a SnapMagic account of your own:
 
 ```shell
-pc login //pub/svc/commerce/digikey:snapmagic_repo     # your snapeda.com user name and password
-pc search parts -P //pub/svc/commerce/digikey/snapmagic -k LM358DR
-pc info //pub/svc/commerce/digikey/snapmagic:LM358DR~texas-instruments
+pc login //pub/collection/snapmagic:snapmagic_repo     # your snapeda.com user name and password
+pc search parts -P //pub/collection/snapmagic/models -k LM358DR
 ```
 
-The password is used once, to get the token SnapMagic's plugins use, and is not kept; the
-token is. A part number two manufacturers have needs the manufacturer
+A part number two manufacturers have needs the manufacturer
 (`LM358DR~rohm-semiconductor`), and the one a DigiKey link names is the manufacturer as
-SnapMagic spells it. `snapmagic: false` on `digikey_repo` turns the aliases off.
-
-Two things to know. **SnapMagic has no public API**: an official one is offered on request at
-<https://www.snapeda.com/get-api/>, and its terms ask for written permission before any
-automated access - ask for it before relying on this. And every model is SnapMagic's, under
-CC BY-SA 4.0 with its Design Exception: fetched for you, as you need it, never put into a
-package.
+SnapMagic spells it. `snapmagic: false` on `digikey_repo` turns the aliases off. Every model is
+SnapMagic's, under CC BY-SA 4.0 with its Design Exception: fetched for you, as you need it,
+never put into a package; see that package for what to know about SnapMagic's API.
 
 ## What it cannot do (yet)
 
@@ -129,7 +139,9 @@ package.
 
 Run end to end in PartCAD 0.9.22 - the categories, a search in one, a part built from DigiKey's
 model, a part built through its SnapMagic alias, a quote of both - against servers standing in
-for DigiKey's and SnapMagic's APIs (the plugins' `api` parameters point them there). Not yet
+for DigiKey's and SnapMagic's APIs (the plugins' `api` parameters point them there). Ordering a
+manufacturer's part by the alias that suits the quantity needs a PartCAD that counts a part
+with such aliases as bought; one that does not quotes it by its MPN instead. Not yet
 against DigiKey's or SnapMagic's own, for want of credentials: the tests answer DigiKey in the
 shapes of its Swagger and SnapMagic in the shapes its API answered without credentials. The
 first live run should confirm the media types DigiKey uses for model files.

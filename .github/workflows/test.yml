@@ -24,7 +24,7 @@ jobs:
           python-version: ${{ matrix.python }}
       # The plugin runs in PartCAD's sandbox, beside PartCAD's 'plugin_models';
       # the tests need that one file, which is all '--no-deps' installs.
-      - run: pip install pytest cryptography && pip install --no-deps "partcad>=0.9.17"
+      - run: pip install pytest && pip install --no-deps "partcad>=0.9.17"
       - run: pytest -q
 
   lint:

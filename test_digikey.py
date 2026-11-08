@@ -28,7 +28,7 @@ TOKEN = API + "/v1/oauth2/token"
 MODEL = "https://mm.digikey.com/Volume0/opasdata/d220001/medias/docus/1234/ATMEGA328P-PU.step"
 
 
-def _variation(sku, package, moq, pricing, stock):
+def _variation(sku, package, moq, pricing, stock, standard=25):
     return {
         "DigiKeyProductNumber": sku,
         "PackageType": {"Id": 1, "Name": package},
@@ -37,7 +37,7 @@ def _variation(sku, package, moq, pricing, stock):
         "MarketPlace": False,
         "QuantityAvailableforPackageType": stock,
         "MinimumOrderQuantity": moq,
-        "StandardPackage": 25,
+        "StandardPackage": standard,
     }
 
 
@@ -76,7 +76,7 @@ RESISTOR = {
     "ProductUrl": "https://www.digikey.com/en/products/detail/yageo/RC0603FR-0710KL/727212",
     "ProductVariations": [
         _variation("311-10.0KHRCT-ND", "Cut Tape (CT)", 1, [(1, 0.1), (10, 0.019), (100, 0.0085)], 4000000),
-        _variation("311-10.0KHRTR-ND", "Tape & Reel (TR)", 5000, [(5000, 0.0024)], 3900000),
+        _variation("311-10.0KHRTR-ND", "Tape & Reel (TR)", 5000, [(5000, 0.0024)], 3900000, standard=5000),
     ],
     "ProductStatus": {"Status": "Active"},
     "Category": {"CategoryId": 2, "Name": "Resistors", "ChildCategories": [{"CategoryId": 52, "Name": "Chip"}]},
@@ -111,6 +111,11 @@ TABLE = {
     ),
     # Every listing of a manufacturer's part, with live prices.
     API
+    + "/products/v4/search/ATMEGA328P-PU/pricing?limit=10&excludeMarketplace=true": (
+        200,
+        {"ProductPricings": [dict(ATMEGA, Categories=[{"CategoryId": 685}])], "ProductsCount": 1},
+    ),
+    API
     + "/products/v4/search/RC0603FR-0710KL/pricing?limit=10&excludeMarketplace=true": (
         200,
         {
@@ -131,6 +136,7 @@ TABLE = {
     ),
     API + "/products/v4/search/ATMEGA328P-PU-ND/productdetails": (200, {"Product": ATMEGA}),
     API + "/products/v4/search/311-10.0KHRCT-ND/productdetails": (200, {"Product": RESISTOR}),
+    API + "/products/v4/search/311-10.0KHRTR-ND/productdetails": (200, {"Product": RESISTOR}),
     API
     + "/products/v4/search/ATMEGA328P-PU-ND/media": (
         200,
@@ -219,10 +225,17 @@ def test_a_search_in_a_category_filters_by_it(digikey):
         "Offset": 0,
         "FilterOptionsRequest": {"CategoryFilter": [{"Id": "685"}]},
     }
-    # One part per packaging, each a DigiKey number; what has no model is found, not served.
-    assert list(hits) == ["ATMEGA328P-PU-ND", "311-10.0KHRCT-ND", "311-10.0KHRTR-ND"]
-    assert hits["ATMEGA328P-PU-ND"]["type"] == "step"
-    assert "type" not in hits["311-10.0KHRCT-ND"]
+    # The product's part, then an alias of it per DigiKey number; what has no model is found, not served.
+    assert list(hits) == [
+        "ATMEGA328P-PU~microchip-technology",
+        "ATMEGA328P-PU-ND",
+        "RC0603FR-0710KL~yageo",
+        "311-10.0KHRCT-ND",
+        "311-10.0KHRTR-ND",
+    ]
+    assert hits["ATMEGA328P-PU~microchip-technology"]["type"] == "step"
+    assert hits["ATMEGA328P-PU-ND"]["source"] == ":ATMEGA328P-PU~microchip-technology"
+    assert "type" not in hits["RC0603FR-0710KL~yageo"] and "type" not in hits["311-10.0KHRCT-ND"]
     # DigiKey has no model of the resistor, which the second search said: its media are not asked for.
     assert _asked(made, API + "/products/v4/search/311-10.0KHRCT-ND/media") == []
     assert len(_asked(made, API + "/products/v4/search/keyword")) == 2
@@ -249,11 +262,36 @@ def test_an_account_number_asks_for_its_own_prices(digikey):
 
 def test_a_product_is_a_part_with_its_digikey_model(digikey):
     made = digikey()
-    config = made.get("objects/part/ATMEGA328P-PU-ND")
-    assert config["type"] == "step" and config["vendor"] == "digikey" and config["sku"] == "ATMEGA328P-PU-ND"
+    config = made.get("objects/part/ATMEGA328P-PU~microchip-technology")
+    assert config["type"] == "step"
+    # Bought by the manufacturer's part number, which DigiKey's store quotes in its cheapest packaging.
+    assert (config["vendor"], config["sku"]) == ("Microchip Technology", "ATMEGA328P-PU")
     assert config["desc"].startswith("Microchip Technology ATMEGA328P-PU: IC MCU 8BIT 32KB FLASH 28DIP.")
-    assert "Core Processor: AVR" in config["desc"]
+    assert "Core Processor: AVR" in config["desc"] and "Sold by DigiKey as ATMEGA328P-PU-ND (Tube)" in config["desc"]
     assert base64.b64decode(made.get("files/" + config["path"])).startswith(b"ISO-10303-21")
+
+
+def test_a_digikey_number_is_an_alias_of_its_products_part(digikey):
+    made = digikey()
+    config = made.get("objects/part/ATMEGA328P-PU-ND")
+    assert (config["type"], config["source"]) == ("alias", ":ATMEGA328P-PU~microchip-technology")
+    assert (config["vendor"], config["sku"]) == ("digikey", "ATMEGA328P-PU-ND") and "count_per_sku" not in config
+
+
+def test_a_full_reel_is_one_sku_of_its_size(digikey):
+    made = digikey()
+    made.http.request.table[API + "/products/v4/search/311-10.0KHRCT-ND/media"] = (200, {"MediaLinks": [SNAPEDA_LINK]})
+    reel = made.get("objects/part/311-10.0KHRTR-ND")
+    assert (reel["source"], reel["count_per_sku"]) == (":RC0603FR-0710KL~yageo", 5000)
+    cut = made.get("objects/part/311-10.0KHRCT-ND")
+    assert "count_per_sku" not in cut
+    # Two reels for 6000, priced by the piece.
+    cart = {
+        "parts": {"r": {"vendor": "digikey", "sku": "311-10.0KHRTR-ND", "count": 6000, "count_per_sku": 5000}},
+        "skus": [{"vendor": "digikey", "sku": "311-10.0KHRTR-ND", "count": 2, "parts": ["r"]}],
+    }
+    (line,) = made.quote({"cart": cart})["lines"]
+    assert (line["packs"], line["quantity"]) == (2, 10000) and line["price"] == pytest.approx(24.0)
 
 
 def test_a_partners_cad_page_is_not_taken_for_a_model(digikey):
@@ -315,30 +353,27 @@ def test_the_shared_module_is_the_one_every_distributor_plugin_has():
 # --- drawn with SnapMagic's model -------------------------------------------------
 
 SNAPEDA = "https://www.snapeda.com/parts/RC0603FR-0710KL/YAGEO/view-part/?ref=digikey"
+SNAPEDA_LINK = {"MediaType": "EDA / CAD Models", "Title": "by SnapEDA", "Url": SNAPEDA}
 
 
-def test_a_part_digikey_has_no_model_file_of_is_snapmagics(digikey):
+def test_a_product_digikey_has_no_model_file_of_is_snapmagics(digikey):
     made = digikey()
-    made.http.request.table[API + "/products/v4/search/311-10.0KHRCT-ND/media"] = (
-        200,
-        {"MediaLinks": [{"MediaType": "EDA / CAD Models", "Title": "by SnapEDA", "Url": SNAPEDA}]},
-    )
-    config = made.get("objects/part/311-10.0KHRCT-ND")
+    made.http.request.table[API + "/products/v4/search/311-10.0KHRCT-ND/media"] = (200, {"MediaLinks": [SNAPEDA_LINK]})
+    config = made.get("objects/part/RC0603FR-0710KL~yageo")
     assert config["type"] == "alias"
-    assert config["source"] == "//pub/svc/commerce/digikey/snapmagic:RC0603FR-0710KL~yageo"
-    # Bought from DigiKey all the same, by its number.
-    assert (config["vendor"], config["sku"]) == ("digikey", "311-10.0KHRCT-ND")
-    assert "Sold by DigiKey as 311-10.0KHRCT-ND" in config["desc"]
+    assert config["source"] == "//pub/collection/snapmagic/models:RC0603FR-0710KL~yageo"
+    assert (config["vendor"], config["sku"]) == ("YAGEO", "RC0603FR-0710KL")
+    # Its DigiKey numbers are aliases of it, bought from DigiKey.
+    cut = made.get("objects/part/311-10.0KHRCT-ND")
+    assert (cut["source"], cut["vendor"], cut["sku"]) == (":RC0603FR-0710KL~yageo", "digikey", "311-10.0KHRCT-ND")
 
 
 def test_snapmagic_can_be_turned_off(digikey, capsys):
     made = digikey(snapmagic="false")
-    made.http.request.table[API + "/products/v4/search/311-10.0KHRCT-ND/media"] = (
-        200,
-        {"MediaLinks": [{"MediaType": "EDA / CAD Models", "Title": "by SnapEDA", "Url": SNAPEDA}]},
-    )
-    assert d.pm.serve(made, "objects/part/311-10.0KHRCT-ND") is None
+    made.http.request.table[API + "/products/v4/search/311-10.0KHRCT-ND/media"] = (200, {"MediaLinks": [SNAPEDA_LINK]})
+    assert d.pm.serve(made, "objects/part/RC0603FR-0710KL~yageo") is None
     assert "has no 3D model at DigiKey" in capsys.readouterr().err
+    assert d.pm.serve(made, "objects/part/311-10.0KHRCT-ND") is None
 
 
 def test_a_model_file_of_digikeys_own_comes_before_snapmagic(digikey):
@@ -346,11 +381,19 @@ def test_a_model_file_of_digikeys_own_comes_before_snapmagic(digikey):
     made.http.request.table[API + "/products/v4/search/ATMEGA328P-PU-ND/media"][1]["MediaLinks"].append(
         {"MediaType": "EDA / CAD Models", "Url": "https://www.snapeda.com/parts/ATMEGA328P-PU/Microchip/view-part/"}
     )
-    assert made.get("objects/part/ATMEGA328P-PU-ND")["type"] == "step"
+    assert made.get("objects/part/ATMEGA328P-PU~microchip-technology")["type"] == "step"
 
 
-def test_snapmagics_name_is_the_one_its_plugin_answers_to():
-    snapmagic = plugin["snapmagic"]
-    url = "https://www.snapeda.com/parts/LM358DR2G/Onsemi/view-part/?ref=digikey"
-    assert plugin["snapmagic_of"]([{"MediaType": "EDA Models", "Url": url}]) == snapmagic.key_of("LM358DR2G", "Onsemi")
+@pytest.mark.parametrize(
+    "mpn, maker, name",
+    [
+        ("LM358DR2G", "Onsemi", "LM358DR2G~onsemi"),
+        ("LM358DR", "Texas%20Instruments", "LM358DR~texas-instruments"),
+        ("LM358DR2G (PROMOTION)", "ON Semiconductor", "LM358DR2G%20%28PROMOTION%29~on-semiconductor"),
+    ],
+)
+def test_snapmagics_name_is_the_one_its_plugin_answers_to(mpn, maker, name):
+    """partcad-repo-snapmagic's key_of spells these the same; its tests hold it to these very names."""
+    url = "https://www.snapeda.com/parts/%s/%s/view-part/?ref=digikey" % (mpn, maker)
+    assert plugin["snapmagic_of"]([{"MediaType": "EDA Models", "Url": url}]) == name
     assert plugin["snapmagic_of"]([{"MediaType": "Datasheets", "Url": "https://www.ti.com/x.pdf"}]) is None
