@@ -36,7 +36,7 @@ docs:
     pc list packages //pub/svc/commerce/digikey/products...
     pc search parts -P //pub/svc/commerce/digikey/products -k ATmega328P
     pc search parts -P //pub/svc/commerce/digikey/products/integrated-circuits-ics/embedded-microcontrollers -k "avr dip"
-    pc inspect //pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND
+    pc info //pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND
     pc supply quote //pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND#10
     ```
 
@@ -96,6 +96,12 @@ providers:
         desc: >-
           'true' asks DigiKey's sandbox (sandbox-api.digikey.com), with a
           sandbox app's credentials, instead of the production API.
+      api:
+        type: string
+        default: ""
+        desc: >-
+          Another address for DigiKey's API: a server standing in for it, to
+          test against. Empty is DigiKey's own (or its sandbox's).
 
 repositories:
   digikey_repo:
@@ -133,6 +139,12 @@ repositories:
         type: string
         default: "false"
         desc: "'true' asks DigiKey's sandbox, with a sandbox app's credentials."
+      api:
+        type: string
+        default: ""
+        desc: >-
+          Another address for DigiKey's API: a server standing in for it, to
+          test against. Empty is DigiKey's own (or its sandbox's).
       snapmagic:
         type: string
         default: "true"
@@ -154,3 +166,9 @@ repositories:
           //pub/svc/commerce/digikey:snapmagic_repo' gets it with your user
           name and password, which it does not keep; or SNAPMAGIC_TOKEN. Never
           set it in a package.
+      api:
+        type: string
+        default: ""
+        desc: >-
+          Another address for SnapMagic: a server standing in for it, to test
+          against. Empty is snapeda.com.

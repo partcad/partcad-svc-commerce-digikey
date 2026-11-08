@@ -157,6 +157,8 @@ class DigiKey(d.Distributor):
         self.client_secret = credentials["client_secret"]
         parameters = self.request.get("parameters") or {}
         self.api = SANDBOX if str(parameters.get("sandbox") or "").lower() in ("1", "true", "yes") else API
+        # Another address for the API: a server standing in for DigiKey's, to test against.
+        self.api = str(parameters.get("api") or self.api).rstrip("/")
         # Your DigiKey account number, for your own prices; unset is DigiKey's standard ones.
         self.account = str(parameters.get("account") or "").strip()
         # The media asked for, by DigiKey number: every packaging of a product shares them.

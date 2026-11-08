@@ -16,9 +16,8 @@ import json
 import os
 import runpy
 
-import pytest
-
 import distributor as d
+import pytest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 plugin = runpy.run_path(os.path.join(_HERE, "digikey.py"), run_name="digikey_under_test")

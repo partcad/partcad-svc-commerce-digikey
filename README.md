@@ -41,7 +41,7 @@ are asked for with your DigiKey account number, the `account` parameter.
 pc list packages //pub/svc/commerce/digikey/products...
 pc search parts -P //pub/svc/commerce/digikey/products -k ATmega328P
 pc search parts -P //pub/svc/commerce/digikey/products/integrated-circuits-ics/embedded-microcontrollers -k "avr dip"
-pc inspect //pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND
+pc info //pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND
 pc supply quote //pub/svc/commerce/digikey/products:ATMEGA328P-PU-ND#10
 ```
 
@@ -97,7 +97,7 @@ for KiCad and Fusion ask, with your SnapMagic account:
 ```shell
 pc login //pub/svc/commerce/digikey:snapmagic_repo     # your snapeda.com user name and password
 pc search parts -P //pub/svc/commerce/digikey/snapmagic -k LM358DR
-pc inspect //pub/svc/commerce/digikey/snapmagic:LM358DR~texas-instruments
+pc info //pub/svc/commerce/digikey/snapmagic:LM358DR~texas-instruments
 ```
 
 The password is used once, to get the token SnapMagic's plugins use, and is not kept; the
@@ -127,9 +127,12 @@ package.
   DigiKey, require attribution, and forbid bulk download and building a database of DigiKey's
   data: the catalogue lists nothing and is searched, and the keys are each user's own.
 
-Not yet run against the live APIs: the tests answer DigiKey from a table in the shapes of
-DigiKey's Swagger, and SnapMagic in the shapes its API answered without credentials. The first
-live run should confirm the media types DigiKey uses for model files.
+Run end to end in PartCAD 0.9.22 - the categories, a search in one, a part built from DigiKey's
+model, a part built through its SnapMagic alias, a quote of both - against servers standing in
+for DigiKey's and SnapMagic's APIs (the plugins' `api` parameters point them there). Not yet
+against DigiKey's or SnapMagic's own, for want of credentials: the tests answer DigiKey in the
+shapes of its Swagger and SnapMagic in the shapes its API answered without credentials. The
+first live run should confirm the media types DigiKey uses for model files.
 
 ## Tests
 

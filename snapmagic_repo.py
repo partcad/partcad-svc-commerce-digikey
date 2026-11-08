@@ -48,7 +48,6 @@ import plugin_models as pm  # PartCAD's toolkit for model sites, on the path of 
 CACHE_VERSION = 1
 
 WEB = "https://www.snapeda.com"
-API = WEB + "/api/v1"
 
 # The name of a part: its MPN, '~', and its manufacturer's slug.
 SEPARATOR = "~"
@@ -106,6 +105,8 @@ class SnapMagic(pm.Site):
     def __init__(self, request=None):
         super().__init__(request)
         self.token = pm.credential(self.request, "token", "SNAPMAGIC_TOKEN")
+        # Another address for SnapMagic: a server standing in for it, to test against.
+        self.web = str((self.request.get("parameters") or {}).get("api") or WEB).rstrip("/")
 
     def login_command(self):
         return "pc login %s:snapmagic_repo" % self.PACKAGE.rpartition("/")[0]
@@ -117,7 +118,7 @@ class SnapMagic(pm.Site):
             raise pm.NeedsCredentials(
                 "snapmagic: %s needs a SnapMagic account: '%s', or SNAPMAGIC_TOKEN" % (what, self.login_command())
             )
-        url = "%s/%s?%s" % (API, path, urllib.parse.urlencode(dict(query, token=self.token)))
+        url = "%s/api/v1/%s?%s" % (self.web, path, urllib.parse.urlencode(dict(query, token=self.token)))
         answer = self.http.json(
             url, what, ttl=ttl, valid=lambda value: isinstance(value, dict) and not value.get("error")
         )
@@ -237,7 +238,7 @@ class SnapMagic(pm.Site):
         url = answer.get("url")
         if not url:
             raise pm.NotFound("snapmagic: %s: SnapMagic has no 3D model of it" % what)
-        data = self.http.download(urllib.parse.urljoin(WEB, url), what)
+        data = self.http.download(urllib.parse.urljoin(self.web, url), what)
         if pm.is_zip(data):
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 steps = [m for m in archive.namelist() if m.lower().endswith((".step", ".stp"))]
@@ -259,7 +260,7 @@ class SnapMagic(pm.Site):
         if not username or not password:
             return {"token": ""}
         response = self.http.request(
-            WEB + "/account/api-login/",
+            self.web + "/account/api-login/",
             headers={"Content-Type": "application/x-www-form-urlencoded"},
             data=urllib.parse.urlencode({"username": username, "password": password}).encode("utf-8"),
             method="POST",
